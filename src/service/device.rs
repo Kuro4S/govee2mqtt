@@ -44,6 +44,9 @@ pub struct Device {
     /// Optimistic mode capability labels when platform API returns empty state
     pub mode_capability_label_by_instance: HashMap<String, String>,
 
+    /// Optimistic toggle states when platform API returns empty state
+    pub toggle_state_by_instance: HashMap<String, bool>,
+
     pub last_polled: Option<DateTime<Utc>>,
 
     active_scene: Option<ActiveSceneInfo>,
@@ -364,7 +367,7 @@ impl Device {
             candidates.push(state);
         }
 
-        candidates.sort_by(|a, b| a.updated.cmp(&b.updated));
+        candidates.sort_by_key(|a| a.updated);
 
         candidates.pop()
     }
@@ -606,12 +609,21 @@ impl Device {
     pub fn get_mode_capability_label(&self, instance: &str) -> Option<String> {
         self.mode_capability_label_by_instance.get(instance).cloned()
     }
+
+    pub fn set_toggle_capability_state(&mut self, instance: &str, on: bool) {
+        self.toggle_state_by_instance
+            .insert(instance.to_string(), on);
+    }
+
+    pub fn get_toggle_capability_state(&self, instance: &str) -> Option<bool> {
+        self.toggle_state_by_instance.get(instance).copied()
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::platform_api::{from_json, DeviceType, HttpDeviceInfo};
+    use crate::platform_api::{from_json, DeviceType};
 
     #[test]
     fn name_compute() {

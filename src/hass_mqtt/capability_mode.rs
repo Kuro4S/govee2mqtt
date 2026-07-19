@@ -1,5 +1,5 @@
 use crate::hass_mqtt::base::{Device, EntityConfig, Origin};
-use crate::hass_mqtt::instance::{publish_entity_config, EntityInstance};
+use crate::hass_mqtt::instance::EntityInstance;
 use crate::hass_mqtt::select::SelectConfig;
 use crate::platform_api::{DeviceCapability, DeviceParameters};
 use crate::service::device::Device as ServiceDevice;
@@ -145,7 +145,7 @@ impl EntityInstance for CapabilityModeSelect {
 }
 
 #[derive(Deserialize)]
-struct IdAndInstance {
+pub(crate) struct IdAndInstance {
     id: String,
     instance: String,
 }
@@ -218,6 +218,6 @@ mod test {
             from_json(include_str!("../../test-data/h1310_platform_metadata.json")).unwrap();
         let cap = info.capability_by_instance("fanSpeedMode").unwrap();
         assert_eq!(cap.kind, DeviceCapabilityKind::Mode);
-        k9::assert_matches_snapshot!(mode_option_labels(cap));
+        k9::assert_matches_snapshot!(format!("{:?}", mode_option_labels(cap)));
     }
 }

@@ -69,11 +69,11 @@ async fn poll_single_device(state: &StateHandle, device: &Device) -> anyhow::Res
         Some(state) => now - state.updated > poll_interval,
     };
 
-    if !needs_update {
+    let needs_platform = device.needs_platform_poll();
+
+    if !needs_update && !needs_platform {
         return Ok(());
     }
-
-    let needs_platform = device.needs_platform_poll();
 
     // Don't interrogate via HTTP if we can use the LAN.
     // If we have LAN and the device is stale, it is likely

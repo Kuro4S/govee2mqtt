@@ -186,7 +186,7 @@ pub async fn enumerate_entities_for_device(
                 | DeviceCapabilityKind::Event => {}
 
                 DeviceCapabilityKind::Mode => {
-                    entities.add(CapabilityModeSelect::new(&d, state, cap).await?);
+                    entities.add(CapabilityModeSelect::new(d, state, cap).await?);
                 }
 
                 DeviceCapabilityKind::DynamicScene => {}

@@ -454,33 +454,19 @@ async fn mqtt_switch_command(
 
     if instance == "powerSwitch" {
         state.device_power_on(&device, on).await?;
-    } else if let Some(client) = state.get_platform_client().await {
-        if let Some(http_dev) = &device.http_device_info {
-            client.set_toggle_state(http_dev, &instance, on).await?;
-        } else {
-            anyhow::bail!("No platform state available to set {id} {instance} to {on}");
-        }
     } else {
-        anyhow::bail!("Don't know how to {command} for {id} {instance}!");
+        state.device_set_toggle_capability(&device, &instance, on).await?;
     }
 
     Ok(())
 }
 
 pub fn mired_to_kelvin(mired: u32) -> u32 {
-    if mired == 0 {
-        0
-    } else {
-        1000000 / mired
-    }
+    1_000_000u32.checked_div(mired).unwrap_or(0)
 }
 
 pub fn kelvin_to_mired(kelvin: u32) -> u32 {
-    if kelvin == 0 {
-        0
-    } else {
-        1000000 / kelvin
-    }
+    1_000_000u32.checked_div(kelvin).unwrap_or(0)
 }
 
 /// HASS is advising us that its status has changed

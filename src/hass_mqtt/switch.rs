@@ -81,6 +81,69 @@ impl CapabilitySwitch {
     }
 }
 
+/// Resolve ON/OFF for platform toggle capabilities (not powerSwitch).
+/// Priority: numeric platform value → optimistic cache → H1310 inference → empty OFF.
+pub fn resolve_capability_toggle_state(device: &ServiceDevice, instance: &str) -> Option<bool> {
+    if let Some(cap) = device.get_state_capability_by_instance(instance) {
+        if let Some(n) = cap.state.pointer("/value").and_then(|v| v.as_i64()) {
+            return Some(n != 0);
+        }
+    }
+
+    if let Some(on) = device.get_toggle_capability_state(instance) {
+        return Some(on);
+    }
+
+    if let Some(on) = inferred_toggle_state(device, instance) {
+        return Some(on);
+    }
+
+    if let Some(cap) = device.get_state_capability_by_instance(instance) {
+        if cap.state.pointer("/value") == Some(&json!("")) {
+            return Some(false);
+        }
+        log::warn!(
+            "CapabilitySwitch: unhandled platform state for {instance}: {cap:#?}"
+        );
+        return Some(false);
+    }
+
+    if device.http_device_state.is_some() {
+        return Some(false);
+    }
+
+    None
+}
+
+/// Infer toggle state for H1310/H1370 when Govee returns empty platform values.
+pub fn inferred_toggle_state(device: &ServiceDevice, instance: &str) -> Option<bool> {
+    if !device.needs_platform_poll() {
+        return None;
+    }
+
+    match instance {
+        "mainLightToggle" => device
+            .device_state()
+            .map(|state| state.brightness > 0 || state.on),
+        "fanToggle" => {
+            if device.get_mode_capability_label("fanSpeedMode").is_some() {
+                return Some(true);
+            }
+            device
+                .get_state_capability_by_instance("fanSpeedMode")
+                .and_then(|cap| cap.state.pointer("/value"))
+                .and_then(|v| v.as_i64())
+                .map(|n| n > 0)
+        }
+        "reverseAirflowToggle" => None,
+        _ => None,
+    }
+}
+
+fn toggle_mqtt_payload(on: bool) -> &'static str {
+    if on { "ON" } else { "OFF" }
+}
+
 #[async_trait]
 impl EntityInstance for CapabilitySwitch {
     async fn publish_config(&self, state: &StateHandle, client: &HassClient) -> anyhow::Result<()> {
@@ -99,46 +162,104 @@ impl EntityInstance for CapabilitySwitch {
                 client
                     .publish(
                         &self.switch.state_topic,
-                        if state.on { "ON" } else { "OFF" },
+                        toggle_mqtt_payload(state.on),
                     )
                     .await?;
             }
             return Ok(());
         }
 
-        // TODO: currently, Govee don't return any meaningful data on
-        // additional states. When they do, we'll need to start reporting
-        // it here, but we'll also need to start polling it from the
-        // platform API in order for it to even be available here.
-        // Until then, the switch will show in the hass UI with an
-        // unknown state but provide you with separate on and off push
-        // buttons so that you can at least send the commands to the device.
-        // <https://developer.govee.com/discuss/6596e84c901fb900312d5968>
-
-        if let Some(cap) = device.get_state_capability_by_instance(&self.instance_name) {
-            match cap.state.pointer("/value").and_then(|v| v.as_i64()) {
-                Some(n) => {
-                    return client
-                        .publish(&self.switch.state_topic, if n != 0 { "ON" } else { "OFF" })
-                        .await;
-                }
-                None => {
-                    if cap.state.pointer("/value") == Some(&json!("")) {
-                        log::trace!(
-                            "CapabilitySwitch::notify_state ignore useless \
-                                            empty string state for {cap:?}"
-                        );
-                    } else {
-                        log::warn!("CapabilitySwitch::notify_state: Do something with {cap:#?}");
-                    }
-                    return Ok(());
-                }
-            }
+        if let Some(on) = resolve_capability_toggle_state(&device, &self.instance_name) {
+            return client
+                .publish(&self.switch.state_topic, toggle_mqtt_payload(on))
+                .await;
         }
+
         log::trace!(
-            "CapabilitySwitch::notify_state: didn't find state for {device} {instance}",
+            "CapabilitySwitch::notify_state: no state for {device} {instance}",
             instance = self.instance_name
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::platform_api::{from_json, HttpDeviceState};
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct StateFixture {
+        payload: HttpDeviceState,
+    }
+
+    fn h1310_with_platform_state() -> ServiceDevice {
+        let mut device = ServiceDevice::new("H1310", "47:64:F8:9C:BD:BC:DF:4A");
+        let fixture: StateFixture =
+            from_json(include_str!("../../test-data/h1310_platform_state.json")).unwrap();
+        device.set_http_device_state(fixture.payload);
+        device
+    }
+
+    #[test]
+    fn empty_platform_toggle_defaults_off() {
+        let device = h1310_with_platform_state();
+        assert_eq!(
+            resolve_capability_toggle_state(&device, "fanToggle"),
+            Some(false)
+        );
+        assert_eq!(
+            resolve_capability_toggle_state(&device, "reverseAirflowToggle"),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn optimistic_toggle_state() {
+        let mut device = h1310_with_platform_state();
+        device.set_toggle_capability_state("fanToggle", true);
+        assert_eq!(
+            resolve_capability_toggle_state(&device, "fanToggle"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn inferred_main_light_from_brightness() {
+        let device = h1310_with_platform_state();
+        assert_eq!(
+            inferred_toggle_state(&device, "mainLightToggle"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn inferred_fan_from_mode_label() {
+        let mut device = h1310_with_platform_state();
+        device.set_mode_capability_label("fanSpeedMode", "Speed 3".to_string());
+        assert_eq!(inferred_toggle_state(&device, "fanToggle"), Some(true));
+        assert_eq!(
+            resolve_capability_toggle_state(&device, "fanToggle"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn numeric_platform_toggle() {
+        let mut device = h1310_with_platform_state();
+        let cap = device
+            .http_device_state
+            .as_mut()
+            .unwrap()
+            .capabilities
+            .iter_mut()
+            .find(|c| c.instance == "fanToggle")
+            .unwrap();
+        cap.state = json!({ "value": 1 });
+        assert_eq!(
+            resolve_capability_toggle_state(&device, "fanToggle"),
+            Some(true)
+        );
     }
 }
