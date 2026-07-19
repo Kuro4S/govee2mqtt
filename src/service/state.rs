@@ -299,6 +299,21 @@ impl State {
         anyhow::bail!("Unable to use Platform API to control {device}");
     }
 
+    pub async fn device_set_mode_capability(
+        self: &Arc<Self>,
+        device: &Device,
+        capability: &DeviceCapability,
+        label: &str,
+        value: JsonValue,
+    ) -> anyhow::Result<()> {
+        self.device_control(device, capability, value).await?;
+        self.device_mut(&device.sku, &device.id)
+            .await
+            .set_mode_capability_label(&capability.instance, label.to_string());
+        self.notify_of_state_change(&device.id).await?;
+        Ok(())
+    }
+
     pub async fn device_light_power_on(
         self: &Arc<Self>,
         device: &Device,

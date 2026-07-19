@@ -1159,4 +1159,18 @@ mod test {
             "\"something\""
         );
     }
+
+    #[test]
+    fn h1310_platform_state() {
+        let resp: GetDeviceStateResponse =
+            from_json(include_str!("../test-data/h1310_platform_state.json")).unwrap();
+        let fan_speed = resp
+            .payload
+            .capabilities
+            .iter()
+            .find(|c| c.instance == "fanSpeedMode")
+            .expect("fanSpeedMode");
+        assert_eq!(fan_speed.state["value"], JsonValue::from(""));
+        assert_eq!(resp.payload.sku, "H1310");
+    }
 }
