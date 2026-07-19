@@ -22,7 +22,9 @@ pub fn mode_capability_display_name(instance: &str) -> String {
 
 pub fn mode_option_labels(cap: &DeviceCapability) -> Vec<String> {
     match &cap.parameters {
-        Some(DeviceParameters::Enum { options }) => options.iter().map(|o| o.name.clone()).collect(),
+        Some(DeviceParameters::Enum { options }) => {
+            options.iter().map(|o| o.name.clone()).collect()
+        }
         _ => vec![],
     }
 }
@@ -77,10 +79,7 @@ impl CapabilityModeSelect {
             "gv2mqtt/select/{id}/state/{instance}",
             id = topic_safe_id(device),
         );
-        let unique_id = format!(
-            "gv2mqtt-{id}-{instance}",
-            id = topic_safe_id(device),
-        );
+        let unique_id = format!("gv2mqtt-{id}-{instance}", id = topic_safe_id(device),);
 
         Ok(Self {
             select: SelectConfig {
@@ -125,9 +124,7 @@ impl EntityInstance for CapabilityModeSelect {
         if let Some(state_cap) = device.get_state_capability_by_instance(&self.instance_name) {
             if let Some(platform_value) = state_cap.state.pointer("/value") {
                 if let Some(label) = mode_label_for_platform_value(cap, platform_value) {
-                    return client
-                        .publish(&self.select.state_topic, label)
-                        .await;
+                    return client.publish(&self.select.state_topic, label).await;
                 }
             }
         }
@@ -219,5 +216,39 @@ mod test {
         let cap = info.capability_by_instance("fanSpeedMode").unwrap();
         assert_eq!(cap.kind, DeviceCapabilityKind::Mode);
         k9::assert_matches_snapshot!(format!("{:?}", mode_option_labels(cap)));
+    }
+
+    #[derive(Deserialize)]
+    struct DevicesFixture {
+        data: Vec<HttpDeviceInfo>,
+    }
+
+    /// Mode capabilities are exposed as a select for every device, not just
+    /// H1310/H1370 (see `enumerator.rs`). This confirms a pre-existing,
+    /// unrelated device family (H7131's `nightlightScene`) still resolves to
+    /// a usable, non-empty option list via the platform metadata, i.e. that
+    /// `CapabilityModeSelect::new` would succeed for it rather than bail.
+    #[test]
+    fn h7131_nightlight_scene_mode_capability_is_usable() {
+        let fixture: DevicesFixture =
+            from_json(include_str!("../../test-data/list_devices_issue4.json")).unwrap();
+        let device = fixture
+            .data
+            .iter()
+            .find(|d| d.sku == "H7131")
+            .expect("H7131 fixture device");
+        let cap = device
+            .capability_by_instance("nightlightScene")
+            .expect("nightlightScene capability");
+        assert_eq!(cap.kind, DeviceCapabilityKind::Mode);
+
+        let labels = mode_option_labels(cap);
+        assert_eq!(labels, vec!["Flame", "Rainbow", "Rhythm", "Easy", "Sleep"]);
+
+        let value = mode_value_for_label(cap, "Rhythm").expect("value for Rhythm");
+        assert_eq!(
+            mode_label_for_platform_value(cap, &value).as_deref(),
+            Some("Rhythm")
+        );
     }
 }

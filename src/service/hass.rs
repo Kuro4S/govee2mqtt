@@ -455,7 +455,9 @@ async fn mqtt_switch_command(
     if instance == "powerSwitch" {
         state.device_power_on(&device, on).await?;
     } else {
-        state.device_set_toggle_capability(&device, &instance, on).await?;
+        state
+            .device_set_toggle_capability(&device, &instance, on)
+            .await?;
     }
 
     Ok(())

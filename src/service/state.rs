@@ -1,6 +1,6 @@
 use crate::ble::{Base64HexBytes, SetHumidifierMode, SetHumidifierNightlightParams};
-use crate::lan_api::{Client as LanClient, DeviceStatus as LanDeviceStatus, LanDevice};
 use crate::hass_mqtt::capability_mode::mode_label_for_platform_value;
+use crate::lan_api::{Client as LanClient, DeviceStatus as LanDeviceStatus, LanDevice};
 use crate::platform_api::{
     ControlDeviceResponseCapability, DeviceCapability, DeviceType, GoveeApiClient,
 };
@@ -736,17 +736,13 @@ impl State {
 pub fn toggle_state_from_control_response(
     response: &ControlDeviceResponseCapability,
 ) -> Option<bool> {
-    response
-        .value
-        .as_i64()
-        .map(|n| n != 0)
-        .or_else(|| {
-            response
-                .state
-                .pointer("/value")
-                .and_then(|v| v.as_i64())
-                .map(|n| n != 0)
-        })
+    response.value.as_i64().map(|n| n != 0).or_else(|| {
+        response
+            .state
+            .pointer("/value")
+            .and_then(|v| v.as_i64())
+            .map(|n| n != 0)
+    })
 }
 
 fn mode_label_from_control_response(
@@ -770,7 +766,7 @@ pub fn sort_and_dedup_scenes(mut scenes: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::platform_api::{DeviceCapabilityKind, ControlDeviceResponseCapability};
+    use crate::platform_api::{ControlDeviceResponseCapability, DeviceCapabilityKind};
     use serde_json::json;
 
     #[test]

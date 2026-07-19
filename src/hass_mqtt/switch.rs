@@ -81,8 +81,20 @@ impl CapabilitySwitch {
     }
 }
 
+/// H1310/H1370 ceiling fans report empty platform state for most toggles
+/// (`fanToggle`, `mainLightToggle`, `reverseAirflowToggle`, ...) rather than
+/// omitting the capability or returning a numeric value. Other device
+/// families are not known to exhibit this, so the "default to OFF instead of
+/// leaving the entity unknown" fallbacks below are intentionally scoped to
+/// this family to avoid changing behavior for devices that legitimately mean
+/// "unknown" when they return an empty string.
+fn is_empty_state_quirk_device(device: &ServiceDevice) -> bool {
+    matches!(device.sku.as_str(), "H1310" | "H1370")
+}
+
 /// Resolve ON/OFF for platform toggle capabilities (not powerSwitch).
-/// Priority: numeric platform value → optimistic cache → H1310 inference → empty OFF.
+/// Priority: numeric platform value → optimistic cache → H1310/H1370
+/// inference → (H1310/H1370 only) empty-string OFF default.
 pub fn resolve_capability_toggle_state(device: &ServiceDevice, instance: &str) -> Option<bool> {
     if let Some(cap) = device.get_state_capability_by_instance(instance) {
         if let Some(n) = cap.state.pointer("/value").and_then(|v| v.as_i64()) {
@@ -98,13 +110,15 @@ pub fn resolve_capability_toggle_state(device: &ServiceDevice, instance: &str) -
         return Some(on);
     }
 
+    if !is_empty_state_quirk_device(device) {
+        return None;
+    }
+
     if let Some(cap) = device.get_state_capability_by_instance(instance) {
         if cap.state.pointer("/value") == Some(&json!("")) {
             return Some(false);
         }
-        log::warn!(
-            "CapabilitySwitch: unhandled platform state for {instance}: {cap:#?}"
-        );
+        log::warn!("CapabilitySwitch: unhandled platform state for {instance}: {cap:#?}");
         return Some(false);
     }
 
@@ -117,7 +131,7 @@ pub fn resolve_capability_toggle_state(device: &ServiceDevice, instance: &str) -
 
 /// Infer toggle state for H1310/H1370 when Govee returns empty platform values.
 pub fn inferred_toggle_state(device: &ServiceDevice, instance: &str) -> Option<bool> {
-    if !device.needs_platform_poll() {
+    if !is_empty_state_quirk_device(device) || !device.needs_platform_poll() {
         return None;
     }
 
@@ -141,7 +155,11 @@ pub fn inferred_toggle_state(device: &ServiceDevice, instance: &str) -> Option<b
 }
 
 fn toggle_mqtt_payload(on: bool) -> &'static str {
-    if on { "ON" } else { "OFF" }
+    if on {
+        "ON"
+    } else {
+        "OFF"
+    }
 }
 
 #[async_trait]
@@ -160,10 +178,7 @@ impl EntityInstance for CapabilitySwitch {
         if self.instance_name == "powerSwitch" {
             if let Some(state) = device.device_state() {
                 client
-                    .publish(
-                        &self.switch.state_topic,
-                        toggle_mqtt_payload(state.on),
-                    )
+                    .publish(&self.switch.state_topic, toggle_mqtt_payload(state.on))
                     .await?;
             }
             return Ok(());
@@ -242,6 +257,30 @@ mod test {
         assert_eq!(
             resolve_capability_toggle_state(&device, "fanToggle"),
             Some(true)
+        );
+    }
+
+    /// Non-H1310/H1370 devices must keep the pre-existing behavior: an
+    /// empty-string platform value (Govee's "no meaningful data yet" state)
+    /// leaves the entity state unresolved (`None`, reported as "unknown" in
+    /// HA) instead of being defaulted to OFF. Only the H1310/H1370 family
+    /// has the empty-state quirk that justifies the OFF fallback.
+    #[test]
+    fn non_h1310_empty_platform_toggle_stays_unknown() {
+        let mut device = ServiceDevice::new("H7131", "some-other-device-id");
+        device.set_http_device_state(HttpDeviceState {
+            sku: "H7131".to_string(),
+            device: "some-other-device-id".to_string(),
+            capabilities: vec![crate::platform_api::DeviceCapabilityState {
+                kind: crate::platform_api::DeviceCapabilityKind::Toggle,
+                instance: "gradientToggle".to_string(),
+                state: json!({ "value": "" }),
+            }],
+        });
+
+        assert_eq!(
+            resolve_capability_toggle_state(&device, "gradientToggle"),
+            None
         );
     }
 

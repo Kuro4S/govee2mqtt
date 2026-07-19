@@ -607,7 +607,9 @@ impl Device {
     }
 
     pub fn get_mode_capability_label(&self, instance: &str) -> Option<String> {
-        self.mode_capability_label_by_instance.get(instance).cloned()
+        self.mode_capability_label_by_instance
+            .get(instance)
+            .cloned()
     }
 
     pub fn set_toggle_capability_state(&mut self, instance: &str, on: bool) {
@@ -640,9 +642,8 @@ mod test {
     #[test]
     fn h1310_needs_platform_poll_despite_light_type() {
         let mut device = Device::new("H1310", "47:64:F8:9C:BD:BC:DF:4A");
-        device.http_device_info = Some(
-            from_json(include_str!("../../test-data/h1310_platform_metadata.json")).unwrap(),
-        );
+        device.http_device_info =
+            Some(from_json(include_str!("../../test-data/h1310_platform_metadata.json")).unwrap());
         assert_eq!(device.device_type(), DeviceType::Light);
         assert!(device.needs_platform_poll());
     }

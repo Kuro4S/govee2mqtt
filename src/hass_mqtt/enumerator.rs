@@ -186,7 +186,15 @@ pub async fn enumerate_entities_for_device(
                 | DeviceCapabilityKind::Event => {}
 
                 DeviceCapabilityKind::Mode => {
-                    entities.add(CapabilityModeSelect::new(d, state, cap).await?);
+                    match CapabilityModeSelect::new(d, state, cap).await {
+                        Ok(select) => entities.add(select),
+                        Err(err) => {
+                            log::warn!(
+                                "Skipping mode capability {} for {d}: {err:#}",
+                                cap.instance
+                            );
+                        }
+                    }
                 }
 
                 DeviceCapabilityKind::DynamicScene => {}
