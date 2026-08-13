@@ -42,14 +42,34 @@ branch by whether it adds new ones, not by a clean run.
 ## Fork-only changes
 
 Some commits on `main` must never reach an upstream contribution branch,
-because they repoint the build at our own registry:
+because they repoint the build at our own registry or drop upstream jobs:
 
-- `.github/workflows/build.yml` — `IMAGE: ghcr.io/kuro4s/govee2mqtt`
+- `.github/workflows/build.yml` — `IMAGE: ghcr.io/kuro4s/govee2mqtt`, and the
+  removed add-on jobs (see below)
 - `addon/Dockerfile`, `addon/config.yaml`, `addon/build.yaml` — image name,
-  project URL, and the cosign identity used to sign add-on images
+  project URL, and the cosign identity
 
 Upstream's hardcoded `ghcr.io/wez/govee2mqtt` makes every push on this fork
 fail with `denied: permission_denied`. Keep these out of PR branches.
+
+## Distribution: container only
+
+`main` publishes a multi-arch image on every push:
+
+```bash
+docker pull ghcr.io/kuro4s/govee2mqtt:latest
+```
+
+The package is public, so no `docker login` is needed. Tags of the form
+`YYYY.MM.DD-<hash>` mark releases and publish an identically named image tag.
+
+The Home Assistant **add-on line is disabled**. `home-assistant/builder` is
+deprecated: releases that still publish a builder image pin cosign v2.5.3,
+which can no longer verify the base image signatures (`no signatures found`),
+and the one release with a usable cosign (2026.06.0) publishes no image at all
+(ghcr 404). No combination works, so both `addon` and `test-addon` were
+removed from the workflow. The `addon/` sources remain in the tree; reviving
+the add-on means migrating to the builder's successor first.
 
 ## Pushing
 
