@@ -39,6 +39,38 @@ branch by whether it adds new ones, not by a clean run.
   commit to it except to address review feedback — anything else changes the
   open PR.
 
+## Planned work
+
+### Expose the ceiling fan as a real hass `fan` entity
+
+Today an H1310 shows up in hass as a light plus a `Fan Toggle` switch and a
+`Fan Speed` select. Hass does not recognize that combination as a fan, so
+there is no fan card, no `fan.set_percentage`, no useful voice control, and
+automations have to coordinate two entities. The MQTT fan platform models
+exactly this: `fanToggle` as state/command, `fanSpeedMode` as `preset_modes`
+or a `percentage` across the six speeds.
+
+There is no `src/hass_mqtt/fan.rs` yet. [humidifier.rs](src/hass_mqtt/humidifier.rs)
+is the closest template, since it already combines a toggle with a mode
+select. This is a feature in its own right and belongs on a separate branch,
+not in the open PR #698.
+
+### `DeviceType::Fan` is inert — do not "fix" it casually
+
+`Device::device_type()` prefers `http_device_info` over the quirk, and Govee
+reports the H1310/H1370 as `devices.types.light`. So the `DeviceType::Fan` in
+their quirk never takes effect in practice, and `DeviceType::Fan` is matched
+nowhere else in the tree. Two consequences:
+
+- Behavior for these devices must hang off explicit quirk flags (as
+  `empty_platform_state` does), never off the device type.
+- The `mdi:fan` icon works *because* the resolved type is `Light`:
+  [light.rs](src/hass_mqtt/light.rs) only applies a quirk icon for
+  `DeviceType::Light`. Making `device_type()` honor the quirk would silently
+  drop the icon, and would change resolution for every other quirked device
+  as well. If it is ever worth changing, it needs its own branch and a sweep
+  over all quirks.
+
 ## Fork-only changes
 
 Some commits on `main` must never reach an upstream contribution branch,
