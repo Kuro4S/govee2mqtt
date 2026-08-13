@@ -279,6 +279,17 @@ fn load_quirks() -> HashMap<String, Quirk> {
         Quirk::device("H7173", DeviceType::Kettle, "mdi:kettle")
             .with_platform_temperature_sensor_units(TemperatureUnits::Fahrenheit)
             .with_show_as_preset_modes(&["Tea", "Coffee", "DIY"]),
+        // Ceiling fans: LAN light + platform fan capabilities (fanSpeedMode)
+        Quirk::device("H1310", DeviceType::Fan, "mdi:fan")
+            .with_lan_api()
+            .with_rgb()
+            .with_brightness()
+            .with_iot_api_support(true),
+        Quirk::device("H1370", DeviceType::Fan, "mdi:fan")
+            .with_lan_api()
+            .with_rgb()
+            .with_brightness()
+            .with_iot_api_support(true),
         // Lights from the list of LAN API enabled devices
         // at <https://app-h5.govee.com/user-manual/wlan-guide>
         Quirk::lan_api_capable_light("H6072", FLOOR_LAMP),

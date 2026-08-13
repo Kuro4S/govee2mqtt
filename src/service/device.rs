@@ -41,6 +41,12 @@ pub struct Device {
     pub humidifier_work_mode: Option<u8>,
     pub humidifier_param_by_mode: HashMap<u8, u8>,
 
+    /// Optimistic mode capability labels when platform API returns empty state
+    pub mode_capability_label_by_instance: HashMap<String, String>,
+
+    /// Optimistic toggle states when platform API returns empty state
+    pub toggle_state_by_instance: HashMap<String, bool>,
+
     pub last_polled: Option<DateTime<Utc>>,
 
     active_scene: Option<ActiveSceneInfo>,
@@ -361,7 +367,7 @@ impl Device {
             candidates.push(state);
         }
 
-        candidates.sort_by(|a, b| a.updated.cmp(&b.updated));
+        candidates.sort_by_key(|a| a.updated);
 
         candidates.pop()
     }
@@ -422,6 +428,7 @@ impl Device {
         let device_type = self.device_type();
         match (device_type, self.sku.as_str()) {
             (_, "H7160") => false,
+            (_, "H1310") | (_, "H1370") => true,
             (DeviceType::Humidifier, _) => true,
             (DeviceType::Light, _) => false,
             (DeviceType::Kettle, _) => true,
@@ -593,11 +600,32 @@ impl Device {
     pub fn is_controllable(&self) -> bool {
         !matches!(self.is_ble_only_device(), Some(true))
     }
+
+    pub fn set_mode_capability_label(&mut self, instance: &str, label: String) {
+        self.mode_capability_label_by_instance
+            .insert(instance.to_string(), label);
+    }
+
+    pub fn get_mode_capability_label(&self, instance: &str) -> Option<String> {
+        self.mode_capability_label_by_instance
+            .get(instance)
+            .cloned()
+    }
+
+    pub fn set_toggle_capability_state(&mut self, instance: &str, on: bool) {
+        self.toggle_state_by_instance
+            .insert(instance.to_string(), on);
+    }
+
+    pub fn get_toggle_capability_state(&self, instance: &str) -> Option<bool> {
+        self.toggle_state_by_instance.get(instance).copied()
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::platform_api::{from_json, DeviceType};
 
     #[test]
     fn name_compute() {
@@ -609,5 +637,14 @@ mod test {
 
         let device = Device::new("H6127", "ce");
         assert_eq!(device.name(), "H6127_CE");
+    }
+
+    #[test]
+    fn h1310_needs_platform_poll_despite_light_type() {
+        let mut device = Device::new("H1310", "47:64:F8:9C:BD:BC:DF:4A");
+        device.http_device_info =
+            Some(from_json(include_str!("../../test-data/h1310_platform_metadata.json")).unwrap());
+        assert_eq!(device.device_type(), DeviceType::Light);
+        assert!(device.needs_platform_poll());
     }
 }
