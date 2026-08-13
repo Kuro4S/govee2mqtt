@@ -425,10 +425,16 @@ impl Device {
             return true;
         }
 
+        // Devices whose platform state is empty still have to be polled: the
+        // platform API is the only source for their toggle/mode capabilities,
+        // even though the values themselves arrive empty.
+        if self.has_empty_platform_state() {
+            return true;
+        }
+
         let device_type = self.device_type();
         match (device_type, self.sku.as_str()) {
             (_, "H7160") => false,
-            (_, "H1310") | (_, "H1370") => true,
             (DeviceType::Humidifier, _) => true,
             (DeviceType::Light, _) => false,
             (DeviceType::Kettle, _) => true,
@@ -472,6 +478,15 @@ impl Device {
             }
         }
         false
+    }
+
+    /// True when the platform API reports empty strings rather than real
+    /// values for this device's toggle and mode capabilities.
+    /// See `Quirk::empty_platform_state`.
+    pub fn has_empty_platform_state(&self) -> bool {
+        self.resolve_quirk()
+            .map(|q| q.empty_platform_state)
+            .unwrap_or(false)
     }
 
     pub fn resolve_quirk(&self) -> Option<Quirk> {
