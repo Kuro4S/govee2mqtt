@@ -1,8 +1,7 @@
 # AGENTS.md
 
-This is a local fork of an upstream open-source project (govee2mqtt). No
-project-specific agent doc structure exists here yet — this file only wires
-in the shared, project-independent harness rules.
+This is a local fork of an upstream open-source project (govee2mqtt), used to
+run H1310 ceiling-fan support that upstream has not merged.
 
 ## AI harness
 
@@ -10,3 +9,51 @@ Read [../ai-docs/harness.md](../ai-docs/harness.md) (general) and
 [../ai-docs/claude-harness.md](../ai-docs/claude-harness.md) (Claude Code)
 before starting — shared token-efficiency/delegation rules across all
 projects.
+
+## Verification
+
+Run before every commit — this mirrors what CI (`.github/workflows/pr.yml`)
+executes:
+
+```bash
+cargo build --all && cargo test --all && cargo fmt --check
+```
+
+`cargo clippy` is *not* part of CI. It reports pre-existing findings in
+`src/platform_api.rs`, `src/hass_mqtt/work_mode.rs` and `src/rest_api.rs`
+under current toolchains; those are inherited from upstream, so judge a
+branch by whether it adds new ones, not by a clean run.
+
+## Remotes and branches
+
+| Remote | Points at | Role |
+|---|---|---|
+| `origin` | `wez/govee2mqtt` | upstream, read-only — no write access |
+| `fork` | `Kuro4S/govee2mqtt` | our own line, push here |
+
+- `main` tracks `origin/main` but has deliberately diverged: it carries the
+  merged H1310 work plus fork-only commits. Syncing upstream is therefore a
+  `git merge origin/main`, never a fast-forward.
+- `feature/h1310-ceiling-fan` is the head of
+  [wez/govee2mqtt#698](https://github.com/wez/govee2mqtt/pull/698). Do not
+  commit to it except to address review feedback — anything else changes the
+  open PR.
+
+## Fork-only changes
+
+Some commits on `main` must never reach an upstream contribution branch,
+because they repoint the build at our own registry:
+
+- `.github/workflows/build.yml` — `IMAGE: ghcr.io/kuro4s/govee2mqtt`
+- `addon/Dockerfile`, `addon/config.yaml`, `addon/build.yaml` — image name,
+  project URL, and the cosign identity used to sign add-on images
+
+Upstream's hardcoded `ghcr.io/wez/govee2mqtt` makes every push on this fork
+fail with `denied: permission_denied`. Keep these out of PR branches.
+
+## Pushing
+
+Push to `fork` over **SSH**. The macOS Keychain token used for HTTPS lacks
+the `workflow` scope, so any push touching `.github/workflows/**` is rejected
+outright. See [../ai-docs/harness.md](../ai-docs/harness.md) → Working rules →
+Commit.
