@@ -299,10 +299,15 @@ fn load_quirks() -> HashMap<String, Quirk> {
         // applies the quirk icon for `DeviceType::Light`). Behavior that must
         // hold for these devices is therefore driven by the explicit flags
         // here, not by the device type.
+        // The colorTemperatureK range is what the H1310 reports in its own
+        // platform metadata. H1370 deliberately gets no range here: we have
+        // no unit to measure, and an unset range now falls through to the
+        // device's own metadata rather than disabling color temperature.
         Quirk::device("H1310", DeviceType::Fan, "mdi:fan")
             .with_lan_api()
             .with_rgb()
             .with_brightness()
+            .with_color_temp_range(2700, 6500)
             .with_iot_api_support(true)
             .with_empty_platform_state(),
         Quirk::device("H1370", DeviceType::Fan, "mdi:fan")

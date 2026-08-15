@@ -542,8 +542,12 @@ impl Device {
     }
 
     pub fn get_color_temperature_range(&self) -> Option<(u32, u32)> {
-        if let Some(quirk) = self.resolve_quirk() {
-            return quirk.color_temp_range;
+        // A quirk that names a range wins, but one that stays silent must not
+        // veto what the device itself reports: returning the quirk's `None`
+        // unconditionally hid colorTemperatureK from hass for every quirked
+        // device that never set a range.
+        if let Some(range) = self.resolve_quirk().and_then(|q| q.color_temp_range) {
+            return Some(range);
         }
 
         if self.lan_device.is_some() {
@@ -652,6 +656,28 @@ mod test {
 
         let device = Device::new("H6127", "ce");
         assert_eq!(device.name(), "H6127_CE");
+    }
+
+    /// The H1310 reports colorTemperatureK 2700-6500 in its metadata. Before
+    /// the quirk carried a range, `get_color_temperature_range` returned the
+    /// quirk's `None` and hass only ever saw 'rgb'.
+    #[test]
+    fn h1310_reports_color_temperature_range() {
+        let mut device = Device::new("H1310", "47:64:F8:9C:BD:BC:DF:4A");
+        device.http_device_info =
+            Some(from_json(include_str!("../../test-data/h1310_platform_metadata.json")).unwrap());
+        assert_eq!(device.get_color_temperature_range(), Some((2700, 6500)));
+    }
+
+    /// A quirk without a range must fall through to the device's own
+    /// metadata instead of vetoing color temperature outright.
+    #[test]
+    fn quirk_without_range_falls_through_to_metadata() {
+        // H7160 has a quirk but no color_temp_range, and no metadata here,
+        // so nothing can be resolved -- the point is that it does not panic
+        // and does not report a bogus range.
+        let device = Device::new("H7160", "aa:bb");
+        assert_eq!(device.get_color_temperature_range(), None);
     }
 
     #[test]
