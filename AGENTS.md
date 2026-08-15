@@ -39,6 +39,42 @@ branch by whether it adds new ones, not by a clean run.
   commit to it except to address review feedback — anything else changes the
   open PR.
 
+## H1310 lamp topology (measured 2026-08-16)
+
+The fan has two lamps — a main light pointing down and an uplight — and the
+platform API exposes one global `brightness`, `colorRgb` and
+`colorTemperatureK` (2700-6500) for both, plus `segmentedBrightness` and
+`segmentedColorRgb` over 8 segments. `mainLightToggle` and
+`backgroundLightToggle` are bare toggles with no parameters.
+
+Measured on the living room unit by driving each lamp in isolation:
+
+| command | transport | affects |
+|---|---|---|
+| `colorTemperatureK` (global) | LAN | **both** lamps; also clears segment colours |
+| `colorRgb` (global) | LAN | **both** lamps |
+| segment **0** | platform API | **main light only** |
+| segments **1-7** | platform API | **uplight only**, genuinely segmented |
+| `segmentedBrightness` | platform API | works, but very compressed — 1% is still bright |
+| reading segment state | — | impossible, always reports `value: ""` |
+
+What this means in practice:
+
+- Color temperature on the fan's light entity works and goes over LAN. With
+  the uplight **off** it drives the main light cleanly and does not switch
+  the uplight on — verified across three kelvin changes. This is the
+  supported way to run Adaptive Lighting on this device.
+- With both lamps on, kelvin retints the uplight too. The uplight can be
+  coloured back via segments 1-7 while the main light keeps its kelvin, but
+  the *next* kelvin update wipes that colour again. Adaptive Lighting sends
+  those continuously, so this combination is not practical.
+- Separate main-light / uplight entities are technically buildable on
+  segments (colour, coarse brightness) but would be write-only (no state
+  readback, so `optimistic`), cloud-bound rather than LAN, and silently reset
+  by any global command — including every Adaptive Lighting update. That
+  combination was judged not worth shipping; revisit only if Govee ever
+  reports segment state.
+
 ## Planned work
 
 ### Expose the ceiling fan as a real hass `fan` entity
